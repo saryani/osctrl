@@ -3,11 +3,13 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
 	"time"
 
+	"github.com/jmpsec/osctrl/api/handlers"
 	"github.com/jmpsec/osctrl/backend"
 	"github.com/jmpsec/osctrl/cache"
 	"github.com/jmpsec/osctrl/carves"
@@ -20,6 +22,8 @@ import (
 	"github.com/jmpsec/osctrl/types"
 	"github.com/jmpsec/osctrl/users"
 	"github.com/jmpsec/osctrl/version"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 
 	"github.com/spf13/viper"
@@ -111,7 +115,8 @@ var (
 	nodesmgr          *nodes.NodeManager
 	queriesmgr        *queries.Queries
 	filecarves        *carves.Carves
-	_metrics          *metrics.Metrics
+	apiMetrics        *metrics.Metrics
+	handlersApi       *handlers.HandlersApi
 	app               *cli.App
 	flags             []cli.Flag
 )
@@ -141,7 +146,7 @@ var validAuth = map[string]bool{
 // Function to load the configuration file and assign to variables
 func loadConfiguration(file, service string) (types.JSONConfigurationAPI, error) {
 	var cfg types.JSONConfigurationAPI
-	log.Printf("Loading %s", file)
+	log.Info().Msgf("Loading %s", file)
 	// Load file and read config
 	viper.SetConfigFile(file)
 	if err := viper.ReadInConfig(); err != nil {
@@ -413,68 +418,78 @@ func init() {
 			Destination: &jwtConfigValues.HoursToExpire,
 		},
 	}
-	// Logging format flags
-	log.SetFlags(log.Lshortfile)
+	// Initialize zerolog logger with our custom parameters
+	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
+		return filepath.Base(file) + ":" + strconv.Itoa(line)
+	}
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "2006-01-02T15:04:05.999Z07:00"}).With().Caller().Logger()
 }
 
 // Go go!
 func osctrlAPIService() {
 	// ////////////////////////////// Backend
-	log.Println("Initializing backend...")
+	log.Info().Msg("Initializing backend...")
 	for {
 		db, err = backend.CreateDBManager(dbConfig)
 		if db != nil {
-			log.Println("Connection to backend successful!")
+			log.Info().Msg("Connection to backend successful!")
 			break
 		}
 		if err != nil {
-			log.Printf("Failed to connect to backend - %v", err)
+			log.Err(err).Msg("Failed to connect to backend")
 			if dbConfig.ConnRetry == 0 {
-				log.Fatalf("Connection to backend failed and no retry was set")
+				log.Fatal().Msg("Connection to backend failed and no retry was set")
 			}
 		}
-		log.Printf("Backend NOT ready! Retrying in %d seconds...\n", dbConfig.ConnRetry)
+		log.Info().Msgf("Backend NOT ready! Retrying in %d seconds...\n", dbConfig.ConnRetry)
 		time.Sleep(time.Duration(dbConfig.ConnRetry) * time.Second)
 	}
 	// ////////////////////////////// Cache
-	log.Println("Initializing cache...")
+	log.Info().Msg("Initializing cache...")
 	for {
 		redis, err = cache.CreateRedisManager(redisConfig)
 		if redis != nil {
-			log.Println("Connection to cache successful!")
+			log.Info().Msg("Connection to cache successful!")
 			break
 		}
 		if err != nil {
-			log.Printf("Failed to connect to cache - %v", err)
+			log.Err(err).Msg("Failed to connect to cache")
 			if redisConfig.ConnRetry == 0 {
-				log.Fatalf("Connection to cache failed and no retry was set")
+				log.Fatal().Msg("Connection to cache failed and no retry was set")
 			}
 		}
-		log.Printf("Cache NOT ready! Retrying in %d seconds...\n", redisConfig.ConnRetry)
+		log.Info().Msgf("Cache NOT ready! Retrying in %d seconds...\n", redisConfig.ConnRetry)
 		time.Sleep(time.Duration(redisConfig.ConnRetry) * time.Second)
 	}
-	log.Println("Initialize users")
+	log.Info().Msg("Initialize users")
 	apiUsers = users.CreateUserManager(db.Conn, &jwtConfig)
-	log.Println("Initialize tags")
+	log.Info().Msg("Initialize tags")
 	tagsmgr = tags.CreateTagManager(db.Conn)
-	log.Println("Initialize environment")
+	log.Info().Msg("Initialize environment")
 	envs = environments.CreateEnvironment(db.Conn)
 	// Initialize settings
-	log.Println("Initialize settings")
+	log.Info().Msg("Initialize settings")
 	settingsmgr = settings.NewSettings(db.Conn)
-	log.Println("Initialize nodes")
+	log.Info().Msg("Initialize nodes")
 	nodesmgr = nodes.CreateNodes(db.Conn)
-	log.Println("Initialize queries")
+	log.Info().Msg("Initialize queries")
 	queriesmgr = queries.CreateQueries(db.Conn)
-	log.Println("Initialize carves")
+	log.Info().Msg("Initialize carves")
 	filecarves = carves.CreateFileCarves(db.Conn, apiConfig.Carver, nil)
-	log.Println("Loading service settings")
-	loadingSettings()
+	log.Info().Msg("Loading service settings")
+	if err := loadingSettings(settingsmgr); err != nil {
+		log.Fatal().Msgf("Error loading settings - %v", err)
+	}
+	log.Info().Msg("Loading service metrics")
+	apiMetrics, err = loadingMetrics(settingsmgr)
+	if err != nil {
+		log.Fatal().Msgf("Error loading metrics - %v", err)
+	}
 	// Ticker to reload environments
 	// FIXME Implement Redis cache
 	// FIXME splay this?
 	if settingsmgr.DebugService(settings.ServiceAPI) {
-		log.Println("DebugService: Environments ticker")
+		log.Debug().Msg("DebugService: Environments ticker")
 	}
 	// Refresh environments as soon as service starts
 	go func() {
@@ -492,7 +507,7 @@ func osctrlAPIService() {
 	// FIXME Implement Redis cache
 	// FIXME splay this?
 	if settingsmgr.DebugService(settings.ServiceAPI) {
-		log.Println("DebugService: Settings ticker")
+		log.Debug().Msg("DebugService: Settings ticker")
 	}
 	// Refresh settings as soon as the service starts
 	go func() {
@@ -506,62 +521,78 @@ func osctrlAPIService() {
 		}
 	}()
 
+	// Initialize Admin handlers before router
+	handlersApi = handlers.CreateHandlersApi(
+		handlers.WithDB(db.Conn),
+		handlers.WithEnvs(envs),
+		handlers.WithUsers(apiUsers),
+		handlers.WithTags(tagsmgr),
+		handlers.WithNodes(nodesmgr),
+		handlers.WithQueries(queriesmgr),
+		handlers.WithCarves(filecarves),
+		handlers.WithSettings(settingsmgr),
+		handlers.WithMetrics(apiMetrics),
+		handlers.WithCache(redis),
+		handlers.WithVersion(serviceVersion),
+		handlers.WithName(serviceName),
+	)
+
 	// ///////////////////////// API
 	if settingsmgr.DebugService(settings.ServiceAPI) {
-		log.Println("DebugService: Creating router")
+		log.Debug().Msg("DebugService: Creating router")
 	}
 	// Create router for API endpoint
 	muxAPI := http.NewServeMux()
 	// API: root
-	muxAPI.HandleFunc("GET /", rootHTTPHandler)
+	muxAPI.HandleFunc("GET /", handlersApi.RootHandler)
 	// API: testing
-	muxAPI.HandleFunc("GET "+healthPath, healthHTTPHandler)
+	muxAPI.HandleFunc("GET "+healthPath, handlersApi.HealthHandler)
 	// API: error
-	muxAPI.HandleFunc("GET "+errorPath, errorHTTPHandler)
+	muxAPI.HandleFunc("GET "+errorPath, handlersApi.ErrorHandler)
 	// API: forbidden
-	muxAPI.HandleFunc("GET "+forbiddenPath, forbiddenHTTPHandler)
+	muxAPI.HandleFunc("GET "+forbiddenPath, handlersApi.ForbiddenHandler)
 
 	// ///////////////////////// UNAUTHENTICATED
-	muxAPI.Handle("POST "+_apiPath(apiLoginPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(apiLoginHandler)))
+	muxAPI.Handle("POST "+_apiPath(apiLoginPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(handlersApi.LoginHandler)))
 	// ///////////////////////// AUTHENTICATED
 	// API: nodes by environment
-	muxAPI.Handle("GET "+_apiPath(apiNodesPath)+"/{env}/all", handlerAuthCheck(http.HandlerFunc(apiAllNodesHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiNodesPath)+"/{env}/active", handlerAuthCheck(http.HandlerFunc(apiActiveNodesHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiNodesPath)+"/{env}/inactive", handlerAuthCheck(http.HandlerFunc(apiInactiveNodesHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiNodesPath)+"/{env}/node/{node}", handlerAuthCheck(http.HandlerFunc(apiNodeHandler)))
-	muxAPI.Handle("POST "+_apiPath(apiNodesPath)+"/{env}/delete", handlerAuthCheck(http.HandlerFunc(apiDeleteNodeHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiNodesPath)+"/{env}/all", handlerAuthCheck(http.HandlerFunc(handlersApi.AllNodesHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiNodesPath)+"/{env}/active", handlerAuthCheck(http.HandlerFunc(handlersApi.ActiveNodesHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiNodesPath)+"/{env}/inactive", handlerAuthCheck(http.HandlerFunc(handlersApi.InactiveNodesHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiNodesPath)+"/{env}/node/{node}", handlerAuthCheck(http.HandlerFunc(handlersApi.NodeHandler)))
+	muxAPI.Handle("POST "+_apiPath(apiNodesPath)+"/{env}/delete", handlerAuthCheck(http.HandlerFunc(handlersApi.DeleteNodeHandler)))
 	// API: queries by environment
-	muxAPI.Handle("GET "+_apiPath(apiQueriesPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(apiAllQueriesShowHandler)))
-	muxAPI.Handle("POST "+_apiPath(apiQueriesPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(apiQueriesRunHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiQueriesPath)+"/{env}/{name}", handlerAuthCheck(http.HandlerFunc(apiQueryShowHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiQueriesPath)+"/{env}/results/{name}", handlerAuthCheck(http.HandlerFunc(apiQueryResultsHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiAllQueriesPath+"/{env}"), handlerAuthCheck(http.HandlerFunc(apiAllQueriesShowHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiQueriesPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(handlersApi.AllQueriesShowHandler)))
+	muxAPI.Handle("POST "+_apiPath(apiQueriesPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(handlersApi.QueriesRunHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiQueriesPath)+"/{env}/{name}", handlerAuthCheck(http.HandlerFunc(handlersApi.QueryShowHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiQueriesPath)+"/{env}/results/{name}", handlerAuthCheck(http.HandlerFunc(handlersApi.QueryResultsHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiAllQueriesPath+"/{env}"), handlerAuthCheck(http.HandlerFunc(handlersApi.AllQueriesShowHandler)))
 	// API: carves by environment
-	muxAPI.Handle("GET "+_apiPath(apiCarvesPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(apiCarvesShowHandler)))
-	muxAPI.Handle("POST "+_apiPath(apiCarvesPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(apiCarvesRunHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiCarvesPath)+"/{env}/{name}", handlerAuthCheck(http.HandlerFunc(apiCarveShowHandler)))
-	// API: users by environment
-	muxAPI.Handle("GET "+_apiPath(apiUsersPath)+"/{username}", handlerAuthCheck(http.HandlerFunc(apiUserHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiUsersPath), handlerAuthCheck(http.HandlerFunc(apiUsersHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiCarvesPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(handlersApi.CarveShowHandler)))
+	muxAPI.Handle("POST "+_apiPath(apiCarvesPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(handlersApi.CarvesRunHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiCarvesPath)+"/{env}/{name}", handlerAuthCheck(http.HandlerFunc(handlersApi.CarveShowHandler)))
+	// API: users
+	muxAPI.Handle("GET "+_apiPath(apiUsersPath)+"/{username}", handlerAuthCheck(http.HandlerFunc(handlersApi.UserHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiUsersPath), handlerAuthCheck(http.HandlerFunc(handlersApi.UsersHandler)))
 	// API: platforms
-	muxAPI.Handle("GET "+_apiPath(apiPlatformsPath), handlerAuthCheck(http.HandlerFunc(apiPlatformsHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiPlatformsPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(apiPlatformsEnvHandler)))
-	// API: environments by environment
-	muxAPI.Handle("GET "+_apiPath(apiEnvironmentsPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(apiEnvironmentHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiEnvironmentsPath)+"/{env}/enroll/{target}", handlerAuthCheck(http.HandlerFunc(apiEnvEnrollHandler)))
-	muxAPI.Handle("POST "+_apiPath(apiEnvironmentsPath)+"/{env}/enroll/{action}", handlerAuthCheck(http.HandlerFunc(apiEnvEnrollActionsHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiEnvironmentsPath)+"/{env}/remove/{target}", handlerAuthCheck(http.HandlerFunc(apiEnvironmentHandler)))
-	muxAPI.Handle("POST "+_apiPath(apiEnvironmentsPath)+"/{env}/remove/{action}", handlerAuthCheck(http.HandlerFunc(apiEnvRemoveActionsHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiEnvironmentsPath), handlerAuthCheck(http.HandlerFunc(apiEnvironmentsHandler)))
-	// API: tags
-	muxAPI.Handle("GET "+_apiPath(apiTagsPath), handlerAuthCheck(http.HandlerFunc(apiTagsHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiTagsPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(apiTagsEnvHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiPlatformsPath), handlerAuthCheck(http.HandlerFunc(handlersApi.PlatformsHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiPlatformsPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(handlersApi.PlatformsEnvHandler)))
+	// API: environments
+	muxAPI.Handle("GET "+_apiPath(apiEnvironmentsPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(handlersApi.EnvironmentHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiEnvironmentsPath)+"/{env}/enroll/{target}", handlerAuthCheck(http.HandlerFunc(handlersApi.EnvEnrollHandler)))
+	muxAPI.Handle("POST "+_apiPath(apiEnvironmentsPath)+"/{env}/enroll/{action}", handlerAuthCheck(http.HandlerFunc(handlersApi.EnvEnrollActionsHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiEnvironmentsPath)+"/{env}/remove/{target}", handlerAuthCheck(http.HandlerFunc(handlersApi.EnvironmentHandler)))
+	muxAPI.Handle("POST "+_apiPath(apiEnvironmentsPath)+"/{env}/remove/{action}", handlerAuthCheck(http.HandlerFunc(handlersApi.EnvRemoveActionsHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiEnvironmentsPath), handlerAuthCheck(http.HandlerFunc(handlersApi.EnvironmentsHandler)))
+	// API: tags by environment
+	muxAPI.Handle("GET "+_apiPath(apiTagsPath), handlerAuthCheck(http.HandlerFunc(handlersApi.AllTagsHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiTagsPath)+"/{env}", handlerAuthCheck(http.HandlerFunc(handlersApi.TagsEnvHandler)))
 	// API: settings by environment
-	muxAPI.Handle("GET "+_apiPath(apiSettingsPath), handlerAuthCheck(http.HandlerFunc(apiSettingsHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiSettingsPath)+"/{service}", handlerAuthCheck(http.HandlerFunc(apiSettingsServiceHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiSettingsPath)+"/{service}/{env}", handlerAuthCheck(http.HandlerFunc(apiSettingsServiceEnvHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiSettingsPath)+"/{service}/json", handlerAuthCheck(http.HandlerFunc(apiSettingsServiceJSONHandler)))
-	muxAPI.Handle("GET "+_apiPath(apiSettingsPath)+"/{service}/json/{env}", handlerAuthCheck(http.HandlerFunc(apiSettingsServiceEnvJSONHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiSettingsPath), handlerAuthCheck(http.HandlerFunc(handlersApi.SettingsHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiSettingsPath)+"/{service}", handlerAuthCheck(http.HandlerFunc(handlersApi.SettingsServiceHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiSettingsPath)+"/{service}/{env}", handlerAuthCheck(http.HandlerFunc(handlersApi.SettingsServiceEnvHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiSettingsPath)+"/{service}/json", handlerAuthCheck(http.HandlerFunc(handlersApi.SettingsServiceJSONHandler)))
+	muxAPI.Handle("GET "+_apiPath(apiSettingsPath)+"/{service}/json/{env}", handlerAuthCheck(http.HandlerFunc(handlersApi.SettingsServiceEnvJSONHandler)))
 
 	// Launch listeners for API server
 	serviceListener := apiConfig.Listener + ":" + apiConfig.Port
@@ -583,11 +614,15 @@ func osctrlAPIService() {
 			TLSConfig:    cfg,
 			TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
 		}
-		log.Printf("%s v%s - HTTPS listening %s", serviceName, serviceVersion, serviceListener)
-		log.Fatal(srv.ListenAndServeTLS(tlsCertFile, tlsKeyFile))
+		log.Info().Msgf("%s v%s - HTTPS listening %s", serviceName, serviceVersion, serviceListener)
+		if err := srv.ListenAndServeTLS(tlsCertFile, tlsKeyFile); err != nil {
+			log.Fatal().Msgf("ListenAndServeTLS: %v", err)
+		}
 	} else {
-		log.Printf("%s v%s - HTTP listening %s", serviceName, serviceVersion, serviceListener)
-		log.Fatal(http.ListenAndServe(serviceListener, muxAPI))
+		log.Info().Msgf("%s v%s - HTTP listening %s", serviceName, serviceVersion, serviceListener)
+		if err := http.ListenAndServe(serviceListener, muxAPI); err != nil {
+			log.Fatal().Msgf("ListenAndServeTLS: %v", err)
+		}
 	}
 }
 
@@ -651,9 +686,8 @@ func main() {
 		},
 	}
 	app.Action = cliAction
-	err := app.Run(os.Args)
-	if err != nil {
-		log.Fatal(err)
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal().Msgf("app.Run error: %v", err)
 	}
 	// Service starts!
 	osctrlAPIService()

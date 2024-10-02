@@ -1,13 +1,12 @@
 package logging
 
 import (
-	"log"
-
 	"github.com/jmpsec/osctrl/backend"
 	"github.com/jmpsec/osctrl/nodes"
 	"github.com/jmpsec/osctrl/queries"
 	"github.com/jmpsec/osctrl/settings"
 	"github.com/jmpsec/osctrl/types"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -146,7 +145,7 @@ func (logTLS *LoggerTLS) Log(logType string, data []byte, environment, uuid stri
 	case settings.LoggingSplunk:
 		l, ok := logTLS.Logger.(*LoggerSplunk)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingSplunk)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingSplunk)
 		}
 		if l.Enabled {
 			l.Send(logType, data, environment, uuid, debug)
@@ -154,7 +153,7 @@ func (logTLS *LoggerTLS) Log(logType string, data []byte, environment, uuid stri
 	case settings.LoggingGraylog:
 		l, ok := logTLS.Logger.(*LoggerGraylog)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingGraylog)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingGraylog)
 		}
 		if l.Enabled {
 			l.Send(logType, data, environment, uuid, debug)
@@ -162,7 +161,7 @@ func (logTLS *LoggerTLS) Log(logType string, data []byte, environment, uuid stri
 	case settings.LoggingDB:
 		l, ok := logTLS.Logger.(*LoggerDB)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingDB)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingDB)
 		}
 		if l.Enabled {
 			l.Log(logType, data, environment, uuid, debug)
@@ -170,7 +169,7 @@ func (logTLS *LoggerTLS) Log(logType string, data []byte, environment, uuid stri
 	case settings.LoggingStdout:
 		l, ok := logTLS.Logger.(*LoggerStdout)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingStdout)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingStdout)
 		}
 		if l.Enabled {
 			l.Log(logType, data, environment, uuid, debug)
@@ -178,7 +177,7 @@ func (logTLS *LoggerTLS) Log(logType string, data []byte, environment, uuid stri
 	case settings.LoggingFile:
 		l, ok := logTLS.Logger.(*LoggerFile)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingFile)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingFile)
 		}
 		if l.Enabled {
 			l.Log(logType, data, environment, uuid, debug)
@@ -186,7 +185,7 @@ func (logTLS *LoggerTLS) Log(logType string, data []byte, environment, uuid stri
 	case settings.LoggingNone:
 		l, ok := logTLS.Logger.(*LoggerNone)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingNone)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingNone)
 		}
 		if l.Enabled {
 			l.Log(logType, data, environment, uuid, debug)
@@ -194,7 +193,7 @@ func (logTLS *LoggerTLS) Log(logType string, data []byte, environment, uuid stri
 	case settings.LoggingKinesis:
 		l, ok := logTLS.Logger.(*LoggerKinesis)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingKinesis)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingKinesis)
 		}
 		if l.Enabled {
 			l.Send(logType, data, environment, uuid, debug)
@@ -202,7 +201,7 @@ func (logTLS *LoggerTLS) Log(logType string, data []byte, environment, uuid stri
 	case settings.LoggingS3:
 		l, ok := logTLS.Logger.(*LoggerS3)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingS3)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingS3)
 		}
 		if l.Enabled {
 			l.Send(logType, data, environment, uuid, debug)
@@ -238,7 +237,7 @@ func (logTLS *LoggerTLS) QueryLog(logType string, data []byte, environment, uuid
 	case settings.LoggingSplunk:
 		l, ok := logTLS.Logger.(*LoggerSplunk)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingSplunk)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingSplunk)
 		}
 		if l.Enabled {
 			l.Send(logType, data, environment, uuid, debug)
@@ -246,7 +245,7 @@ func (logTLS *LoggerTLS) QueryLog(logType string, data []byte, environment, uuid
 	case settings.LoggingGraylog:
 		l, ok := logTLS.Logger.(*LoggerGraylog)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingGraylog)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingGraylog)
 		}
 		if l.Enabled {
 			l.Send(logType, data, environment, uuid, debug)
@@ -254,7 +253,7 @@ func (logTLS *LoggerTLS) QueryLog(logType string, data []byte, environment, uuid
 	case settings.LoggingDB:
 		l, ok := logTLS.Logger.(*LoggerDB)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingDB)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingDB)
 		}
 		if l.Enabled {
 			l.Query(data, environment, uuid, name, status, debug)
@@ -262,7 +261,7 @@ func (logTLS *LoggerTLS) QueryLog(logType string, data []byte, environment, uuid
 	case settings.LoggingStdout:
 		l, ok := logTLS.Logger.(*LoggerStdout)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingStdout)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingStdout)
 		}
 		if l.Enabled {
 			l.Query(data, environment, uuid, name, status, debug)
@@ -270,7 +269,7 @@ func (logTLS *LoggerTLS) QueryLog(logType string, data []byte, environment, uuid
 	case settings.LoggingFile:
 		l, ok := logTLS.Logger.(*LoggerFile)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingFile)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingFile)
 		}
 		if l.Enabled {
 			l.Query(data, environment, uuid, name, status, debug)
@@ -278,7 +277,7 @@ func (logTLS *LoggerTLS) QueryLog(logType string, data []byte, environment, uuid
 	case settings.LoggingNone:
 		l, ok := logTLS.Logger.(*LoggerNone)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingNone)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingNone)
 		}
 		if l.Enabled {
 			l.Query(data, environment, uuid, name, status, debug)
@@ -286,7 +285,7 @@ func (logTLS *LoggerTLS) QueryLog(logType string, data []byte, environment, uuid
 	case settings.LoggingKinesis:
 		l, ok := logTLS.Logger.(*LoggerKinesis)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingKinesis)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingKinesis)
 		}
 		if l.Enabled {
 			l.Send(logType, data, environment, uuid, debug)
@@ -294,7 +293,7 @@ func (logTLS *LoggerTLS) QueryLog(logType string, data []byte, environment, uuid
 	case settings.LoggingS3:
 		l, ok := logTLS.Logger.(*LoggerS3)
 		if !ok {
-			log.Printf("error casting logger to %s", settings.LoggingS3)
+			log.Error().Msgf("error casting logger to %s", settings.LoggingS3)
 		}
 		if l.Enabled {
 			l.Send(logType, data, environment, uuid, debug)

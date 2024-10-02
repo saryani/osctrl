@@ -2,12 +2,12 @@ package users
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/jmpsec/osctrl/types"
 	"github.com/jmpsec/osctrl/utils"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -38,7 +38,7 @@ type AdminUser struct {
 // TokenClaims to hold user claims when using JWT
 type TokenClaims struct {
 	Username string `json:"username"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }
 
 // UserManager have all users of the system
@@ -51,17 +51,17 @@ type UserManager struct {
 func CreateUserManager(backend *gorm.DB, jwtconfig *types.JSONConfigurationJWT) *UserManager {
 	// Check if JWT is not empty
 	if jwtconfig.JWTSecret == "" {
-		log.Fatalf("JWT Secret can not be empty")
+		log.Fatal().Msgf("JWT Secret can not be empty")
 	}
 	var u *UserManager
 	u = &UserManager{DB: backend, JWTConfig: jwtconfig}
 	// table admin_users
 	if err := backend.AutoMigrate(&AdminUser{}); err != nil {
-		log.Fatalf("Failed to AutoMigrate table (admin_users): %v", err)
+		log.Fatal().Msgf("Failed to AutoMigrate table (admin_users): %v", err)
 	}
 	// table user_permissions
 	if err := backend.AutoMigrate(&UserPermission{}); err != nil {
-		log.Fatalf("Failed to AutoMigrate table (user_permissions): %v", err)
+		log.Fatal().Msgf("Failed to AutoMigrate table (user_permissions): %v", err)
 	}
 	return u
 }
@@ -100,15 +100,14 @@ func (m *UserManager) CheckLoginCredentials(username, password string) (bool, Ad
 }
 
 // CreateToken to create a new JWT token for a given user
-func (m *UserManager) CreateToken(username string) (string, time.Time, error) {
+func (m *UserManager) CreateToken(username, issuer string) (string, time.Time, error) {
 	expirationTime := time.Now().Add(time.Hour * time.Duration(m.JWTConfig.HoursToExpire))
 	// Create the JWT claims, which includes the username, level and expiry time
 	claims := &TokenClaims{
 		Username: username,
-		StandardClaims: jwt.StandardClaims{
-			// In JWT, the expiry time is expressed as unix milliseconds
-			ExpiresAt: expirationTime.Unix(),
-			Issuer:    DefaultTokeIssuer,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			Issuer:    issuer,
 		},
 	}
 	// Declare the token with the algorithm used for signing, and the claims
@@ -128,11 +127,11 @@ func (m *UserManager) CheckToken(jwtSecret, tokenStr string) (TokenClaims, bool)
 		return []byte(jwtSecret), nil
 	})
 	if err != nil {
-		log.Printf("Error %v", err)
+		log.Err(err).Msg("error parsing token claims")
 		return *claims, false
 	}
 	if !tkn.Valid {
-		log.Println("Not valid")
+		log.Info().Msg("token not valid")
 		return *claims, false
 	}
 	return *claims, true
@@ -163,12 +162,12 @@ func (m *UserManager) New(username, password, email, fullname string, admin bool
 			return AdminUser{}, err
 		}
 		return AdminUser{
-			Username:   username,
-			PassHash:   passhash,
-			UUID:       utils.GenUUID(),
-			Admin:      admin,
-			Email:      email,
-			Fullname:   fullname,
+			Username: username,
+			PassHash: passhash,
+			UUID:     utils.GenUUID(),
+			Admin:    admin,
+			Email:    email,
+			Fullname: fullname,
 		}, nil
 	}
 	return AdminUser{}, fmt.Errorf("%s already exists", username)

@@ -2,10 +2,11 @@ package settings
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/jmpsec/osctrl/types"
 	"gorm.io/gorm"
+
+	"github.com/rs/zerolog/log"
 )
 
 // Types of services
@@ -173,7 +174,7 @@ func NewSettings(backend *gorm.DB) *Settings {
 	s = &Settings{DB: backend}
 	// table setting_values
 	if err := backend.AutoMigrate(&SettingValue{}); err != nil {
-		log.Fatalf("Failed to AutoMigrate table (setting_values): %v", err)
+		log.Fatal().Msgf("Failed to AutoMigrate table (setting_values): %v", err)
 	}
 	return s
 }
@@ -451,7 +452,7 @@ func (conf *Settings) SetInteger(intValue int64, service, name string, envID uin
 	if err := conf.DB.Model(&value).Update(TypeInteger, intValue).Error; err != nil {
 		return fmt.Errorf("Updates %v", err)
 	}
-	log.Printf("SetInteger %d %s %s", intValue, service, name)
+	log.Debug().Msgf("SetInteger %d %s %s", intValue, service, name)
 	return nil
 }
 
@@ -475,7 +476,7 @@ func (conf *Settings) SetBoolean(boolValue bool, service, name string, envID uin
 	if err := conf.DB.Model(&value).Updates(map[string]interface{}{TypeBoolean: boolValue}).Error; err != nil {
 		return fmt.Errorf("Updates %v", err)
 	}
-	log.Printf("SetBoolean %v %s %s", boolValue, service, name)
+	log.Debug().Msgf("SetBoolean %v %s %s", boolValue, service, name)
 	return nil
 }
 
@@ -517,7 +518,7 @@ func (conf *Settings) SetString(strValue string, service, name string, _json boo
 	if err := conf.DB.Model(&val).Update(TypeString, strValue).Error; err != nil {
 		return fmt.Errorf("Updates %v", err)
 	}
-	log.Printf("SetString %s %s %s", strValue, service, name)
+	log.Debug().Msgf("SetString %s %s %s", strValue, service, name)
 	return nil
 }
 
@@ -541,7 +542,7 @@ func (conf *Settings) SetInfo(info string, service, name string, envID uint) err
 	if err := conf.DB.Model(&value).Update("info", info).Error; err != nil {
 		return fmt.Errorf("Updates %v", err)
 	}
-	log.Printf("SetInfo %s %s %s", info, service, name)
+	log.Debug().Msgf("SetInfo %s %s %s", info, service, name)
 	return nil
 }
 

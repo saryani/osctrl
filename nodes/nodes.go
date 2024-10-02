@@ -2,11 +2,20 @@ package nodes
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+)
+
+const (
+	// ActiveNodes to represent active nodes
+	ActiveNodes = "active"
+	// InactiveNodes to represent inactive nodes
+	InactiveNodes = "inactive"
+	// AllNodes to represent all nodes
+	AllNodes = "all"
 )
 
 // OsqueryNode as abstraction of a node
@@ -90,27 +99,27 @@ func CreateNodes(backend *gorm.DB) *NodeManager {
 	n = &NodeManager{DB: backend}
 	// table osquery_nodes
 	if err := backend.AutoMigrate(&OsqueryNode{}); err != nil {
-		log.Fatalf("Failed to AutoMigrate table (osquery_nodes): %v", err)
+		log.Fatal().Msgf("Failed to AutoMigrate table (osquery_nodes): %v", err)
 	}
 	// table archive_osquery_nodes
 	if err := backend.AutoMigrate(&ArchiveOsqueryNode{}); err != nil {
-		log.Fatalf("Failed to AutoMigrate table (archive_osquery_nodes): %v", err)
+		log.Fatal().Msgf("Failed to AutoMigrate table (archive_osquery_nodes): %v", err)
 	}
 	// table node_history_ipaddress
 	if err := backend.AutoMigrate(&NodeHistoryIPAddress{}); err != nil {
-		log.Fatalf("Failed to AutoMigrate table (node_history_ipaddress): %v", err)
+		log.Fatal().Msgf("Failed to AutoMigrate table (node_history_ipaddress): %v", err)
 	}
 	// table node_history_hostname
 	if err := backend.AutoMigrate(&NodeHistoryHostname{}); err != nil {
-		log.Fatalf("Failed to AutoMigrate table (node_history_hostname): %v", err)
+		log.Fatal().Msgf("Failed to AutoMigrate table (node_history_hostname): %v", err)
 	}
 	// table node_history_localname
 	if err := backend.AutoMigrate(&NodeHistoryLocalname{}); err != nil {
-		log.Fatalf("Failed to AutoMigrate table (node_history_localname): %v", err)
+		log.Fatal().Msgf("Failed to AutoMigrate table (node_history_localname): %v", err)
 	}
 	// table node_history_username
 	if err := backend.AutoMigrate(&NodeHistoryUsername{}); err != nil {
-		log.Fatalf("Failed to AutoMigrate table (node_history_username): %v", err)
+		log.Fatal().Msgf("Failed to AutoMigrate table (node_history_username): %v", err)
 	}
 	return n
 }
@@ -210,16 +219,16 @@ func (n *NodeManager) GetBySelector(stype, selector, target string, hours int64)
 		s = "platform"
 	}
 	switch target {
-	case "all":
+	case AllNodes:
 		if err := n.DB.Where(s+" = ?", selector).Find(&nodes).Error; err != nil {
 			return nodes, err
 		}
-	case "active":
+	case ActiveNodes:
 		//if err := n.DB.Where(s+" = ?", selector).Where("updated_at > ?", time.Now().AddDate(0, 0, -3)).Find(&nodes).Error; err != nil {
 		if err := n.DB.Where(s+" = ?", selector).Where("updated_at > ?", time.Now().Add(time.Duration(hours)*time.Hour)).Find(&nodes).Error; err != nil {
 			return nodes, err
 		}
-	case "inactive":
+	case InactiveNodes:
 		//if err := n.DB.Where(s+" = ?", selector).Where("updated_at < ?", time.Now().AddDate(0, 0, -3)).Find(&nodes).Error; err != nil {
 		if err := n.DB.Where(s+" = ?", selector).Where("updated_at < ?", time.Now().Add(time.Duration(hours)*time.Hour)).Find(&nodes).Error; err != nil {
 			return nodes, err
@@ -232,16 +241,16 @@ func (n *NodeManager) GetBySelector(stype, selector, target string, hours int64)
 func (n *NodeManager) Gets(target string, hours int64) ([]OsqueryNode, error) {
 	var nodes []OsqueryNode
 	switch target {
-	case "all":
+	case AllNodes:
 		if err := n.DB.Find(&nodes).Error; err != nil {
 			return nodes, err
 		}
-	case "active":
+	case ActiveNodes:
 		//if err := n.DB.Where("updated_at > ?", time.Now().AddDate(0, 0, -3)).Find(&nodes).Error; err != nil {
 		if err := n.DB.Where("updated_at > ?", time.Now().Add(time.Duration(hours)*time.Hour)).Find(&nodes).Error; err != nil {
 			return nodes, err
 		}
-	case "inactive":
+	case InactiveNodes:
 		//if err := n.DB.Where("updated_at < ?", time.Now().AddDate(0, 0, -3)).Find(&nodes).Error; err != nil {
 		if err := n.DB.Where("updated_at < ?", time.Now().Add(time.Duration(hours)*time.Hour)).Find(&nodes).Error; err != nil {
 			return nodes, err

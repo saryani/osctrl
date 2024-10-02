@@ -2,11 +2,11 @@ package environments
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/jmpsec/osctrl/settings"
 	"github.com/jmpsec/osctrl/utils"
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 )
 
@@ -107,7 +107,7 @@ func CreateEnvironment(backend *gorm.DB) *Environment {
 	e = &Environment{DB: backend}
 	// table tls_environments
 	if err := backend.AutoMigrate(&TLSEnvironment{}); err != nil {
-		log.Fatalf("Failed to AutoMigrate table (tls_environments): %v", err)
+		log.Fatal().Msgf("Failed to AutoMigrate table (tls_environments): %v", err)
 	}
 	return e
 }
@@ -116,6 +116,33 @@ func CreateEnvironment(backend *gorm.DB) *Environment {
 func (environment *Environment) Get(identifier string) (TLSEnvironment, error) {
 	var env TLSEnvironment
 	if err := environment.DB.Where("name = ? OR uuid = ?", identifier, identifier).First(&env).Error; err != nil {
+		return env, err
+	}
+	return env, nil
+}
+
+// Get TLS Environment by UUID
+func (environment *Environment) GetByUUID(uuid string) (TLSEnvironment, error) {
+	var env TLSEnvironment
+	if err := environment.DB.Where("uuid = ?", uuid).First(&env).Error; err != nil {
+		return env, err
+	}
+	return env, nil
+}
+
+// Get TLS Environment by Name
+func (environment *Environment) GetByName(name string) (TLSEnvironment, error) {
+	var env TLSEnvironment
+	if err := environment.DB.Where("name = ?", name).First(&env).Error; err != nil {
+		return env, err
+	}
+	return env, nil
+}
+
+// Get TLS Environment by ID
+func (environment *Environment) GetByID(id uint) (TLSEnvironment, error) {
+	var env TLSEnvironment
+	if err := environment.DB.Where("ID = ?", id).First(&env).Error; err != nil {
 		return env, err
 	}
 	return env, nil

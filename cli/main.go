@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/jmpsec/osctrl/backend"
@@ -15,6 +14,7 @@ import (
 	"github.com/jmpsec/osctrl/types"
 	"github.com/jmpsec/osctrl/users"
 	"github.com/jmpsec/osctrl/version"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/term"
 
 	"github.com/urfave/cli/v2"
@@ -870,6 +870,30 @@ func init() {
 							Action: cliWrapper(quickAddEnvironment),
 						},
 						{
+							Name:    "extend-enroll",
+							Aliases: []string{"f"},
+							Usage:   "Extend the existing enroll URL for a TLS environment",
+							Action:  cliWrapper(extendEnrollEnvironment),
+						},
+						{
+							Name:    "rotate-enroll",
+							Aliases: []string{"f"},
+							Usage:   "Rotate to a new enroll URL for a TLS environment",
+							Action:  cliWrapper(rotateEnrollEnvironment),
+						},
+						{
+							Name:    "expire-enroll",
+							Aliases: []string{"f"},
+							Usage:   "Expire the existing enroll URL for a TLS environment",
+							Action:  cliWrapper(expireEnrollEnvironment),
+						},
+						{
+							Name:    "notexpire-enroll",
+							Aliases: []string{"f"},
+							Usage:   "Set the existing enroll URL for a TLS environment to NOT expire",
+							Action:  cliWrapper(notexpireEnrollEnvironment),
+						},
+						{
 							Name:    "quick-remove",
 							Aliases: []string{"Q"},
 							Usage:   "Generates one-liner for quick removing nodes to a TLS environment",
@@ -888,6 +912,30 @@ func init() {
 								},
 							},
 							Action: cliWrapper(quickRemoveEnvironment),
+						},
+						{
+							Name:    "extend-remove",
+							Aliases: []string{"f"},
+							Usage:   "Extend the existing enroll URL for a TLS environment",
+							Action:  cliWrapper(extendRemoveEnvironment),
+						},
+						{
+							Name:    "rotate-remove",
+							Aliases: []string{"f"},
+							Usage:   "Rotate to a new enroll URL for a TLS environment",
+							Action:  cliWrapper(rotateRemoveEnvironment),
+						},
+						{
+							Name:    "expire-remove",
+							Aliases: []string{"f"},
+							Usage:   "Expire the existing remove URL for a TLS environment",
+							Action:  cliWrapper(expireRemoveEnvironment),
+						},
+						{
+							Name:    "notexpire-remove",
+							Aliases: []string{"f"},
+							Usage:   "Set the existing remove URL for a TLS environment to NOT expire",
+							Action:  cliWrapper(notexpireRemoveEnvironment),
 						},
 						{
 							Name:    "secret",
@@ -1667,7 +1715,7 @@ func cliWrapper(action func(*cli.Context) error) func(*cli.Context) error {
 func cliAction(c *cli.Context) error {
 	if c.NumFlags() == 0 {
 		if err := cli.ShowAppHelp(c); err != nil {
-			log.Fatalf("❌ Error with CLI help - %s", err)
+			log.Fatal().Msgf("❌ Error with CLI help - %s", err)
 		}
 		return cli.Exit("\nNo flags provided", 2)
 	}
@@ -1686,6 +1734,6 @@ func main() {
 	app.Commands = commands
 	app.Action = cliAction
 	if err := app.Run(os.Args); err != nil {
-		log.Fatalf("❌ Failed to execute - %v", err)
+		log.Fatal().Msgf("❌ Failed to execute - %v", err)
 	}
 }
