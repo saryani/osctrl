@@ -99,8 +99,7 @@ func (l *LoggerKafka) Send(logType string, data []byte, environment, uuid string
 	l.producer.Produce(ctx, &rec, func(r *kgo.Record, err error) {
 		if err != nil {
 			log.Printf(
-				"failed to produce message to kafka topic '%s'. details: %w",
-				l.config.Topic, err)
+				"failed to produce message to kafka topic '%s'. details: %s", l.config.Topic, err)
 		}
 		if debug {
 			log.Printf("message with key '%s' was sent to topic '%s' successfully\n%s", key, l.config.Topic, string(data))
