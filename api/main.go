@@ -366,13 +366,6 @@ func init() {
 			Destination: &dbConfigValues.ConnRetry,
 		},
 		&cli.BoolFlag{
-			Name:        "db-ssl-mode",
-			Value:       false,
-			Usage:       "Whether to use SSL mode to connect to database or not, the default value is false",
-			EnvVars:     []string{"DB_SSL_MODE"},
-			Destination: &dbConfigValues.SSLMode,
-		},
-		&cli.BoolFlag{
 			Name:        "tls",
 			Aliases:     []string{"t"},
 			Value:       false,
